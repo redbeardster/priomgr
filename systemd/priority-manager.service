@@ -1,0 +1,16 @@
+[Unit]
+Description=Dynamic Priority Manager
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/priority-manager --daemon --config /etc/priority-manager/config.toml
+Restart=always
+RestartSec=5
+User=root
+Group=root
+CapabilityBoundingSet=CAP_SYS_NICE
+AmbientCapabilities=CAP_SYS_NICE
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,27 @@
+check_interval_ms = 5000
+max_rt_priority = 95
+min_rt_priority = 10
+responsiveness_threshold_ms = 2000
+critical_load_multiplier = 2.0
+
+[[monitored_processes]]
+name_pattern = "ffmpeg"
+target_priority = 85
+policy = "fifo"
+auto_adjust = true
+max_priority = 90
+min_priority = 50
+
+[[monitored_processes]]
+name_pattern = "audio"
+target_priority = 80
+policy = "rr" 
+auto_adjust = true
+max_priority = 85
+min_priority = 40
+
+[[monitored_processes]]
+name_pattern = "compilation"
+target_priority = 70
+policy = "other"
+auto_adjust = false
