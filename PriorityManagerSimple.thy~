@@ -1,0 +1,208 @@
+theory PriorityManagerSimple
+  imports Main
+begin
+
+section \<open>Simplified Priority Manager\<close>
+
+text \<open>
+  Упрощённая модель для одного процесса.
+  Соответствует PriorityManagerSimple.tla
+\<close>
+
+subsection \<open>Типы и константы\<close>
+
+type_synonym priority = nat
+type_synonym load = nat
+
+definition MIN_PRIORITY :: priority where
+  "MIN_PRIORITY = 10"
+
+definition MAX_PRIORITY :: priority where
+  "MAX_PRIORITY = 95"
+
+definition CRITICAL_LOAD :: load where
+  "CRITICAL_LOAD = 50"
+
+subsection \<open>Состояние\<close>
+
+record simple_state =
+  priority :: priority
+  load :: load
+  adjustments :: nat
+
+text \<open>Начальное состояние\<close>
+definition init :: simple_state where
+  "init = \<lparr>priority = MAX_PRIORITY, load = 0, adjustments = 0\<rparr>"
+
+subsection \<open>Действия\<close>
+
+definition increase_load :: "simple_state \<Rightarrow> simple_state" where
+  "increase_load s = 
+    (if load s < 100 
+     then s\<lparr>load := load s + 10\<rparr>
+     else s)"
+
+definition decrease_load :: "simple_state \<Rightarrow> simple_state" where
+  "decrease_load s = 
+    (if load s > 0 
+     then s\<lparr>load := load s - 10\<rparr>
+     else s)"
+
+definition adjust_priority :: "simple_state \<Rightarrow> simple_state" where
+  "adjust_priority s = 
+    (if load s > CRITICAL_LOAD \<and> priority s > MIN_PRIORITY
+     then s\<lparr>
+       priority := max MIN_PRIORITY (priority s - 10),
+       adjustments := adjustments s + 1
+     \<rparr>
+     else s)"
+
+subsection \<open>Инварианты\<close>
+
+definition priority_in_bounds :: "simple_state \<Rightarrow> bool" where
+  "priority_in_bounds s \<equiv> 
+    MIN_PRIORITY \<le> priority s \<and> priority s \<le> MAX_PRIORITY"
+
+definition no_negative_priority :: "simple_state \<Rightarrow> bool" where
+  "no_negative_priority s \<equiv> priority s \<ge> 0"
+
+subsection \<open>Базовые леммы\<close>
+
+lemma init_satisfies_bounds:
+  "priority_in_bounds init"
+  unfolding priority_in_bounds_def init_def 
+            MIN_PRIORITY_def MAX_PRIORITY_def
+  by simp
+
+lemma increase_load_preserves_bounds:
+  assumes "priority_in_bounds s"
+  shows "priority_in_bounds (increase_load s)"
+  unfolding priority_in_bounds_def increase_load_def
+  using assms by simp
+
+lemma decrease_load_preserves_bounds:
+  assumes "priority_in_bounds s"
+  shows "priority_in_bounds (decrease_load s)"
+  unfolding priority_in_bounds_def decrease_load_def
+  using assms by simp
+
+lemma adjust_priority_preserves_bounds:
+  assumes "priority_in_bounds s"
+  shows "priority_in_bounds (adjust_priority s)"
+proof -
+  have "MIN_PRIORITY \<le> max MIN_PRIORITY (priority s - 10)"
+    by (simp add: max_def)
+  moreover have "max MIN_PRIORITY (priority s - 10) \<le> MAX_PRIORITY"
+    using assms unfolding priority_in_bounds_def
+    by (metis MIN_PRIORITY_def MAX_PRIORITY_def diff_le_self 
+              dual_order.trans max.cobounded2)
+  ultimately show ?thesis
+    unfolding priority_in_bounds_def adjust_priority_def
+    using assms by auto
+qed
+
+subsection \<open>Главные теоремы\<close>
+
+theorem all_actions_preserve_bounds:
+  assumes "priority_in_bounds s"
+  shows "priority_in_bounds (increase_load s) \<and>
+         priority_in_bounds (decrease_load s) \<and>
+         priority_in_bounds (adjust_priority s)"
+  using assms
+  by (simp add: increase_load_preserves_bounds
+                decrease_load_preserves_bounds
+                adjust_priority_preserves_bounds)
+
+theorem priority_decreases_under_load:
+  assumes "priority_in_bounds s"
+      and "load s > CRITICAL_LOAD"
+      and "priority s > MIN_PRIORITY"
+  shows "priority (adjust_priority s) \<le> priority s"
+  unfolding adjust_priority_def
+  using assms by auto
+
+theorem priority_strictly_decreases:
+  assumes "priority_in_bounds s"
+      and "load s > CRITICAL_LOAD"
+      and "priority s > MIN_PRIORITY"
+      and "priority s - 10 \<ge> MIN_PRIORITY"
+  shows "priority (adjust_priority s) < priority s"
+  unfolding adjust_priority_def
+  using assms by auto
+
+theorem finite_adjustments:
+  assumes "priority_in_bounds s"
+  shows "adjustments s \<le> (MAX_PRIORITY - MIN_PRIORITY) div 10 + 1"
+proof -
+  have "priority s - MIN_PRIORITY \<le> MAX_PRIORITY - MIN_PRIORITY"
+    using assms unfolding priority_in_bounds_def by auto
+  thus ?thesis
+    by (metis MIN_PRIORITY_def MAX_PRIORITY_def)
+qed
+
+theorem adjustment_increments_counter:
+  assumes "load s > CRITICAL_LOAD"
+      and "priority s > MIN_PRIORITY"
+  shows "adjustments (adjust_priority s) = adjustments s + 1"
+  unfolding adjust_priority_def
+  using assms by auto
+
+subsection \<open>Свойства прогресса\<close>
+
+text \<open>Определение: Достижение минимального приоритета\<close>
+definition reaches_min_priority :: "simple_state list \<Rightarrow> bool" where
+  "reaches_min_priority trace \<equiv>
+    \<exists>i < length trace. priority (trace ! i) = MIN_PRIORITY"
+
+text \<open>Лемма о прогрессе\<close>
+lemma progress_towards_min:
+  assumes "priority_in_bounds s"
+      and "load s > CRITICAL_LOAD"
+      and "priority s > MIN_PRIORITY + 10"
+  shows "priority (adjust_priority s) < priority s"
+  using assms
+  unfolding adjust_priority_def priority_in_bounds_def
+  by auto
+
+text \<open>Теорема о конечном достижении минимума\<close>
+theorem eventually_reaches_min:
+  assumes "priority_in_bounds s"
+      and "load s > CRITICAL_LOAD"
+      and "priority s > MIN_PRIORITY"
+  shows "\<exists>n. n \<le> (priority s - MIN_PRIORITY) div 10 + 1 \<and>
+             (\<forall>k. k \<ge> n \<longrightarrow> priority s = MIN_PRIORITY)"
+  using assms finite_adjustments
+  by auto
+
+subsection \<open>Композиция действий\<close>
+
+theorem composition_preserves_invariant:
+  assumes "priority_in_bounds s"
+  shows "priority_in_bounds (adjust_priority (increase_load s))"
+  using assms
+  by (simp add: increase_load_preserves_bounds adjust_priority_preserves_bounds)
+
+theorem action_commutativity:
+  "increase_load (decrease_load s) = decrease_load (increase_load s)"
+  unfolding increase_load_def decrease_load_def
+  by auto
+
+subsection \<open>Дополнительные свойства\<close>
+
+lemma no_priority_increase_under_load:
+  assumes "load s > CRITICAL_LOAD"
+  shows "priority (adjust_priority s) \<le> priority s"
+  unfolding adjust_priority_def
+  using assms by auto
+
+lemma load_bounds:
+  "load (increase_load s) \<le> 100"
+  unfolding increase_load_def
+  by auto
+
+lemma adjustment_monotonic:
+  "adjustments (adjust_priority s) \<ge> adjustments s"
+  unfolding adjust_priority_def
+  by auto
+
+end

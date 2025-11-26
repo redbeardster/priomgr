@@ -1,0 +1,11 @@
+[package]
+name = "prusti-verification"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# Минимальные зависимости
+
+[features]
+# Feature для Prusti (требует установки cargo-prusti)
+prusti = []

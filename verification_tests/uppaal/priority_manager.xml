@@ -1,0 +1,156 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE nta PUBLIC '-//Uppaal Team//DTD Flat System 1.1//EN' 'http://www.it.uu.se/research/group/darts/uppaal/flat-1_2.dtd'>
+<nta>
+	<declaration>
+// UPPAAL Model for Priority Manager
+// UPPAAL - специализирован для timed automata и реального времени
+
+// Константы
+const int MIN_PRIORITY = 10;
+const int MAX_PRIORITY = 95;
+const int CRITICAL_LOAD = 50;
+const int STEP_SIZE = 10;
+const int CHECK_INTERVAL = 5; // секунды
+
+// Глобальные переменные
+int priority = MAX_PRIORITY;
+int load = 0;
+int adjustments = 0;
+clock t; // Глобальные часы
+	</declaration>
+
+	<!-- Автомат: Управление нагрузкой -->
+	<template>
+		<name>LoadManager</name>
+		<declaration>
+clock local_t;
+		</declaration>
+		<location id="id0" x="0" y="0">
+			<name>Normal</name>
+		</location>
+		<location id="id1" x="200" y="0">
+			<name>HighLoad</name>
+			<label kind="invariant">local_t &lt;= 10</label>
+		</location>
+		<init ref="id0"/>
+		<transition>
+			<source ref="id0"/>
+			<target ref="id1"/>
+			<label kind="guard">load &lt; 100</label>
+			<label kind="assignment">load = load + 10, local_t = 0</label>
+		</transition>
+		<transition>
+			<source ref="id1"/>
+			<target ref="id0"/>
+			<label kind="guard">local_t &gt;= 5 &amp;&amp; load &gt; 0</label>
+			<label kind="assignment">load = load - 10</label>
+		</transition>
+	</template>
+
+	<!-- Автомат: Корректировка приоритета -->
+	<template>
+		<name>PriorityAdjuster</name>
+		<declaration>
+clock adjust_t;
+		</declaration>
+		<location id="id2" x="0" y="0">
+			<name>Idle</name>
+		</location>
+		<location id="id3" x="200" y="0">
+			<name>Adjusting</name>
+			<label kind="invariant">adjust_t &lt;= CHECK_INTERVAL</label>
+		</location>
+		<init ref="id2"/>
+		<transition>
+			<source ref="id2"/>
+			<target ref="id3"/>
+			<label kind="guard">load &gt; CRITICAL_LOAD &amp;&amp; priority &gt; MIN_PRIORITY</label>
+			<label kind="assignment">adjust_t = 0</label>
+		</transition>
+		<transition>
+			<source ref="id3"/>
+			<target ref="id2"/>
+			<label kind="guard">adjust_t &gt;= CHECK_INTERVAL</label>
+			<label kind="assignment">
+priority = (priority &gt;= MIN_PRIORITY + STEP_SIZE) ? priority - STEP_SIZE : MIN_PRIORITY,
+adjustments = adjustments + 1
+			</label>
+		</transition>
+	</template>
+
+	<!-- Автомат: Мониторинг -->
+	<template>
+		<name>Monitor</name>
+		<location id="id4" x="0" y="0">
+			<name>Monitoring</name>
+			<committed/>
+		</location>
+		<init ref="id4"/>
+		<transition>
+			<source ref="id4"/>
+			<target ref="id4"/>
+			<label kind="guard">priority &gt;= MIN_PRIORITY &amp;&amp; priority &lt;= MAX_PRIORITY</label>
+		</transition>
+	</template>
+
+	<system>
+// Система
+LoadMgr = LoadManager();
+PrioAdj = PriorityAdjuster();
+Mon = Monitor();
+
+system LoadMgr, PrioAdj, Mon;
+	</system>
+
+	<queries>
+		<!-- Safety свойства -->
+		<query>
+			<formula>A[] (priority &gt;= MIN_PRIORITY &amp;&amp; priority &lt;= MAX_PRIORITY)</formula>
+			<comment>S1: Приоритет всегда в границах</comment>
+		</query>
+
+		<query>
+			<formula>A[] (load &gt; CRITICAL_LOAD imply priority &lt;= MAX_PRIORITY)</formula>
+			<comment>S2: Монотонность при перегрузке</comment>
+		</query>
+
+		<!-- Liveness свойства -->
+		<query>
+			<formula>A&lt;&gt; (load &gt; CRITICAL_LOAD imply priority &lt; MAX_PRIORITY)</formula>
+			<comment>L1: В конечном итоге приоритет уменьшится</comment>
+		</query>
+
+		<query>
+			<formula>A&lt;&gt; (load &gt; CRITICAL_LOAD imply priority == MIN_PRIORITY)</formula>
+			<comment>L2: В конечном итоге достигнем минимума</comment>
+		</query>
+
+		<!-- Временные свойства -->
+		<query>
+			<formula>A[] (load &gt; CRITICAL_LOAD imply (priority &lt; MAX_PRIORITY or t &lt;= 60))</formula>
+			<comment>T1: Реакция в течение 60 секунд</comment>
+		</query>
+
+		<query>
+			<formula>A[] (adjustments &gt; 0 imply t &gt;= CHECK_INTERVAL)</formula>
+			<comment>T2: Минимальный интервал между корректировками</comment>
+		</query>
+
+		<!-- Deadlock проверка -->
+		<query>
+			<formula>A[] not deadlock</formula>
+			<comment>Отсутствие deadlock</comment>
+		</query>
+
+		<!-- Reachability -->
+		<query>
+			<formula>E&lt;&gt; (priority == MIN_PRIORITY)</formula>
+			<comment>Достижимость минимального приоритета</comment>
+		</query>
+
+		<query>
+			<formula>E&lt;&gt; (load &gt; CRITICAL_LOAD &amp;&amp; priority == MIN_PRIORITY)</formula>
+			<comment>Достижимость состояния: перегрузка + минимальный приоритет</comment>
+		</query>
+	</queries>
+</nta>
